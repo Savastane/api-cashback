@@ -80,4 +80,22 @@ export class CashbackConsumerRepository {
       updated_at: new Date(data.updated_at),
     } as CashbackConsumer;
   }
+
+  async findReferrals(consumerId: string): Promise<CashbackConsumer[]> {
+    const { data, error } = await this.supabase
+      .schema('cashback')
+      .from('consumer')
+      .select('*')
+      .or(`referred_by.eq.${consumerId},referred_by_level2.eq.${consumerId}`);
+
+    if (error) {
+      throw new Error(`Erro ao buscar indicados no banco: ${error.message}`);
+    }
+
+    return (data ?? []).map((item) => ({
+      ...item,
+      created_at: new Date(item.created_at),
+      updated_at: new Date(item.updated_at),
+    })) as CashbackConsumer[];
+  }
 }

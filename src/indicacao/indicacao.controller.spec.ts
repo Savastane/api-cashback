@@ -2,11 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { IndicacaoController } from './indicacao.controller';
 import { CreateIndicacaoUseCase } from './usecase/create-indicacao.usecase';
 import { ActivateConsumerUseCase } from './usecase/activate-consumer.usecase';
+import { GetIndicadosUseCase } from './usecase/get-indicados.usecase';
 
 describe('IndicacaoController', () => {
   let controller: IndicacaoController;
   let createUseCase: CreateIndicacaoUseCase;
   let activateUseCase: ActivateConsumerUseCase;
+  let getIndicadosUseCase: GetIndicadosUseCase;
 
   const mockCreatedConsumer = {
     id: 'new-uuid',
@@ -24,6 +26,19 @@ describe('IndicacaoController', () => {
   const mockActiveConsumer = {
     ...mockCreatedConsumer,
     referral_status: 'active' as const,
+  };
+
+  const mockIndicados = {
+    indicados: [
+      {
+        id: 'referral-1',
+        username: 'user1',
+        full_name: 'User One',
+        referral_status: 'active',
+        level: 1 as const,
+        created_at: new Date(),
+      },
+    ],
   };
 
   const mockDto = {
@@ -49,12 +64,19 @@ describe('IndicacaoController', () => {
             execute: jest.fn().mockResolvedValue(mockActiveConsumer),
           },
         },
+        {
+          provide: GetIndicadosUseCase,
+          useValue: {
+            execute: jest.fn().mockResolvedValue(mockIndicados),
+          },
+        },
       ],
     }).compile();
 
     controller = module.get<IndicacaoController>(IndicacaoController);
     createUseCase = module.get<CreateIndicacaoUseCase>(CreateIndicacaoUseCase);
     activateUseCase = module.get<ActivateConsumerUseCase>(ActivateConsumerUseCase);
+    getIndicadosUseCase = module.get<GetIndicadosUseCase>(GetIndicadosUseCase);
   });
 
   it('should be defined', () => {
@@ -75,5 +97,13 @@ describe('IndicacaoController', () => {
 
     expect(spy).toHaveBeenCalledWith({ id: 'new-uuid' });
     expect(result).toEqual(mockActiveConsumer);
+  });
+
+  it('should call getIndicadosUseCase.execute with the correct consumerId and return the result', async () => {
+    const spy = jest.spyOn(getIndicadosUseCase, 'execute');
+    const result = await controller.getIndicados('my-consumer-id');
+
+    expect(spy).toHaveBeenCalledWith({ consumerId: 'my-consumer-id' });
+    expect(result).toEqual(mockIndicados);
   });
 });

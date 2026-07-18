@@ -1,12 +1,14 @@
-import { Controller, Post, Patch, Body, Param } from '@nestjs/common';
+import { Controller, Post, Patch, Get, Body, Param } from '@nestjs/common';
 import { CreateIndicacaoUseCase, CreateIndicacaoRequest, CreateIndicacaoResponse } from './usecase/create-indicacao.usecase';
 import { ActivateConsumerUseCase, ActivateConsumerResponse } from './usecase/activate-consumer.usecase';
+import { GetIndicadosUseCase, GetIndicadosResponse } from './usecase/get-indicados.usecase';
 
 @Controller('indicacao')
 export class IndicacaoController {
   constructor(
     private readonly createIndicacaoUseCase: CreateIndicacaoUseCase,
     private readonly activateConsumerUseCase: ActivateConsumerUseCase,
+    private readonly getIndicadosUseCase: GetIndicadosUseCase,
   ) {}
 
   @Post()
@@ -21,5 +23,12 @@ export class IndicacaoController {
     @Param('id') id: string,
   ): Promise<ActivateConsumerResponse> {
     return this.activateConsumerUseCase.execute({ id });
+  }
+
+  @Get(':consumerId/indicados')
+  async getIndicados(
+    @Param('consumerId') consumerId: string,
+  ): Promise<GetIndicadosResponse> {
+    return this.getIndicadosUseCase.execute({ consumerId });
   }
 }

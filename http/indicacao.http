@@ -1,17 +1,29 @@
-@baseUrl = http://localhost:3510
+@baseUrl = http://localhost:3555
+@gateway = https://api-gateway-ashy-seven.vercel.app
+@consumerId = 67be4156-dee8-4c36-a205-61756c77c926
 
 ### Criar Indicação (Novo Consumidor na Rede de Cashback)
 POST {{baseUrl}}/indicacao
 Content-Type: application/json
 
 {
-  "id": "5c6690fb-7ebf-430a-bdd3-e0098cd05e86",
+  "id": "{{consumerId}}",
   "username": "@redecity",
   "full_name": "Rede City",
   "referralCodeUsed": "@savastane"
 }
 
 ### Ativar Consumidor na Rede de Cashback
-PATCH {{baseUrl}}/indicacao/5c6690fb-7ebf-430a-bdd3-e0098cd05e86/activate
+PATCH {{baseUrl}}/indicacao/{{consumerId}}/activate
 Accept: application/json
+
+### Obter Indicados (Nível 1 e Nível 2) — Local
+GET {{baseUrl}}/indicacao/{{consumerId}}/indicados
+Accept: application/json
+
+### Obter Indicados (Nível 1 e Nível 2) — Via API Gateway (produção)
+GET {{gateway}}/api/cashback/indicacao/{{consumerId}}/indicados
+Accept: application/json
+
+
 
