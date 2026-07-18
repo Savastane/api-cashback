@@ -16,6 +16,8 @@ export interface ExtratoTransactionItem {
   type: 'Entrada' | 'Uso' | 'Saida';
   amount: number;         // negativo para saídas
   iconType: 'plus' | 'cart' | 'bill';
+  rawType: string;
+  description: string | null;
 }
 
 export interface GetExtratoResponse {
@@ -76,7 +78,12 @@ export class GetExtratoUseCase {
       request.consumerId,
     );
 
-    const transactions: ExtratoTransactionItem[] = rawTransactions.map((tx) => {
+    // Garantir ordenação decrescente por data/hora do extrato
+    const sortedRaw = [...rawTransactions].sort(
+      (a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime(),
+    );
+
+    const transactions: ExtratoTransactionItem[] = sortedRaw.map((tx) => {
       const isOut = tx.direction === 'out';
       const txType = tx.type as CashbackTransactionType;
 
@@ -87,6 +94,8 @@ export class GetExtratoUseCase {
         type: isOut ? (txType === 'redemption' ? 'Uso' : 'Saida') : 'Entrada',
         amount: isOut ? -Math.abs(tx.amount) : tx.amount,
         iconType: ICON_MAP[txType] ?? 'cart',
+        rawType: txType,
+        description: tx.description,
       };
     });
 
