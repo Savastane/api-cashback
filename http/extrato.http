@@ -1,0 +1,12 @@
+@baseUrl = http://localhost:3555
+@gateway = https://api-gateway-ashy-seven.vercel.app
+@consumerId = 67be4156-dee8-4c36-a205-61756c77c926
+
+### Extrato Cashback — Direto na API (local)
+### Retorna: { balance: { balance, description }, transactions: [...] }
+GET {{baseUrl}}/extrato/{{consumerId}}
+Accept: application/json
+
+### Extrato Cashback — Via API Gateway (produção)
+GET {{gateway}}/api/cashback/extrato/{{consumerId}}
+Accept: application/json
