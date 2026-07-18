@@ -7,6 +7,7 @@ import { SupabaseModule } from './supabase/supabase.module';
 import { RedisModule } from './redis/redis.module';
 import { IndicacaoModule } from './indicacao/indicacao.module';
 import { DistribuicaoModule } from './distribuicao/distribuicao.module';
+import { ExtratoModule } from './extrato/extrato.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { DistribuicaoModule } from './distribuicao/distribuicao.module';
     RedisModule,
     IndicacaoModule,
     DistribuicaoModule,
+    ExtratoModule,
   ],
 })
 export class AppModule { }
