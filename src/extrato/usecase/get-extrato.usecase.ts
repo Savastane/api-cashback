@@ -66,7 +66,7 @@ function formatDate(date: Date | string): string {
 
 @Injectable()
 export class GetExtratoUseCase {
-  constructor(private readonly extratoRepository: ExtratoRepository) {}
+  constructor(private readonly extratoRepository: ExtratoRepository) { }
 
   async execute(request: GetExtratoRequest): Promise<GetExtratoResponse> {
     const consumer = await this.extratoRepository.findConsumerById(request.consumerId);
@@ -89,7 +89,7 @@ export class GetExtratoUseCase {
 
       return {
         id: tx.id,
-        title: TITLE_MAP[txType] ?? tx.description ?? tx.type,
+        title: tx.description ?? tx.type,
         date: formatDate(tx.occurred_at),
         type: isOut ? (txType === 'redemption' ? 'Uso' : 'Saida') : 'Entrada',
         amount: isOut ? -Math.abs(tx.amount) : tx.amount,
