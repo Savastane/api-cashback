@@ -1,0 +1,11 @@
+    @base=http://localhost:3510
+
+    POST  {{base}}/charges
+    Content-Type: application/json
+
+    {
+        "idPromotion": "jrkm4a9f0EgoItnptM7y",
+        "idConsumidor": "qv0Fy4UYQ9cUlmCuqPiYcuaEx6g1"
+    }
+
+

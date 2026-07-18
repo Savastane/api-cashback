@@ -1,0 +1,17 @@
+@baseUrl = http://localhost:3510
+
+### Criar Indicação (Novo Consumidor na Rede de Cashback)
+POST {{baseUrl}}/indicacao
+Content-Type: application/json
+
+{
+  "id": "5c6690fb-7ebf-430a-bdd3-e0098cd05e86",
+  "username": "@redecity",
+  "full_name": "Rede City",
+  "referralCodeUsed": "@savastane"
+}
+
+### Ativar Consumidor na Rede de Cashback
+PATCH {{baseUrl}}/indicacao/5c6690fb-7ebf-430a-bdd3-e0098cd05e86/activate
+Accept: application/json
+

@@ -1,0 +1,6 @@
+@baseUrl = http://localhost:3555
+
+### Distribuir Cashback por Payable ID
+### Gera transações de cashback para o consumer (nível 0), indicador (nível 1) e indicador do indicador (nível 2)
+POST {{baseUrl}}/distribuicao/6d9b038e-e929-4ec1-9323-23a9111dc216
+Accept: application/json
