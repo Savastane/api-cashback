@@ -45,6 +45,7 @@ export class CashbackConsumerRepository {
         referred_by: consumer.referred_by,
         referred_by_level2: consumer.referred_by_level2,
         username: consumer.username,
+        nickname: consumer.nickname,
         full_name: consumer.full_name,
         referral_status: consumer.referral_status,
         cashback_balance: consumer.cashback_balance,
