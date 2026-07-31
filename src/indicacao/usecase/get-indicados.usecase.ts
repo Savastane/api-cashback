@@ -8,6 +8,7 @@ export interface GetIndicadosRequest {
 export interface IndicadoItem {
   id: string;
   username: string;
+  nickname: string | null;
   full_name: string | null;
   referral_status: string;
   level: 1 | 2;
@@ -35,6 +36,7 @@ export class GetIndicadosUseCase {
       return {
         id: item.id,
         username: item.username,
+        nickname: item.nickname ?? null,
         full_name: item.full_name,
         referral_status: item.referral_status,
         level,
