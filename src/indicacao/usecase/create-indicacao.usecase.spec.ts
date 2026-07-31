@@ -4,16 +4,22 @@ import { CashbackConsumerRepository } from '../repository/cashback-consumer.repo
 import { CashbackConsumer } from '../../model/cashback-consumer.model';
 import { BadRequestException } from '@nestjs/common';
 
+jest.mock('crypto', () => ({
+  ...jest.requireActual('crypto'),
+  randomUUID: () => 'mocked-random-uuid',
+}));
+
 describe('CreateIndicacaoUseCase', () => {
   let useCase: CreateIndicacaoUseCase;
   let repository: jest.Mocked<Partial<CashbackConsumerRepository>>;
 
   const mockReferrer: CashbackConsumer = {
     id: 'referrer-uuid-1111',
-    referral_code: 'REF123',
+    referral_code: 'referrer_nickname',
     referred_by: 'level2-uuid-2222',
     referred_by_level2: null,
-    username: 'referrerUser',
+    username: 'referrer_nickname',
+    nickname: 'referrer_nickname',
     full_name: 'Referrer Name',
     referral_status: 'active',
     cashback_balance: 10.0,
@@ -24,14 +30,14 @@ describe('CreateIndicacaoUseCase', () => {
   const mockNewConsumerInput = {
     id: 'new-uuid-9999',
     username: 'newUser',
+    nickname: 'newUser',
     full_name: 'New User Name',
-    referralCodeUsed: 'REF123',
+    referral_id: 'referrer-uuid-1111',
   };
 
   beforeEach(async () => {
     repository = {
       findById: jest.fn(),
-      findByReferralCode: jest.fn(),
       create: jest.fn(),
     };
 
@@ -53,15 +59,23 @@ describe('CreateIndicacaoUseCase', () => {
   });
 
   it('should successfully create a new cashback consumer with correct level 1 and level 2 referrers', async () => {
-    repository.findById!.mockResolvedValue(null);
-    repository.findByReferralCode!.mockResolvedValue(mockReferrer);
-    
+    repository.findById!.mockImplementation(async (id) => {
+      if (id === mockNewConsumerInput.id) {
+        return null;
+      }
+      if (id === mockNewConsumerInput.referral_id) {
+        return mockReferrer;
+      }
+      return null;
+    });
+
     const expectedCreatedConsumer: CashbackConsumer = {
       id: mockNewConsumerInput.id,
-      referral_code: 'newuser',
+      referral_code: 'mocked-random-uuid',
       referred_by: 'referrer-uuid-1111',
       referred_by_level2: 'level2-uuid-2222',
       username: mockNewConsumerInput.username,
+      nickname: mockNewConsumerInput.nickname,
       full_name: mockNewConsumerInput.full_name,
       referral_status: 'pending',
       cashback_balance: 0.0,
@@ -74,13 +88,14 @@ describe('CreateIndicacaoUseCase', () => {
     const result = await useCase.execute(mockNewConsumerInput);
 
     expect(repository.findById).toHaveBeenCalledWith(mockNewConsumerInput.id);
-    expect(repository.findByReferralCode).toHaveBeenCalledWith('REF123');
+    expect(repository.findById).toHaveBeenCalledWith(mockNewConsumerInput.referral_id);
     expect(repository.create).toHaveBeenCalledWith(expect.objectContaining({
       id: mockNewConsumerInput.id,
-      referral_code: 'newuser',
+      referral_code: 'mocked-random-uuid',
       referred_by: 'referrer-uuid-1111',
       referred_by_level2: 'level2-uuid-2222',
       username: mockNewConsumerInput.username,
+      nickname: mockNewConsumerInput.nickname,
       full_name: mockNewConsumerInput.full_name,
       referral_status: 'pending',
       cashback_balance: 0.0,
@@ -88,7 +103,7 @@ describe('CreateIndicacaoUseCase', () => {
     expect(result).toEqual(expectedCreatedConsumer);
   });
 
-  it('should throw BadRequestException if consumer already exists', async () => {
+  it('should throw BadRequestException if consumer already exists in cashback network', async () => {
     repository.findById!.mockResolvedValue({ id: 'existing' } as CashbackConsumer);
 
     await expect(useCase.execute(mockNewConsumerInput)).rejects.toThrow(
@@ -96,12 +111,20 @@ describe('CreateIndicacaoUseCase', () => {
     );
   });
 
-  it('should throw BadRequestException if referral code used does not exist', async () => {
-    repository.findById!.mockResolvedValue(null);
-    repository.findByReferralCode!.mockResolvedValue(null);
+  it('should throw BadRequestException if referrer does not exist', async () => {
+    repository.findById!.mockImplementation(async (id) => {
+      if (id === mockNewConsumerInput.id) {
+        return null;
+      }
+      if (id === mockNewConsumerInput.referral_id) {
+        return null;
+      }
+      return null;
+    });
 
     await expect(useCase.execute(mockNewConsumerInput)).rejects.toThrow(
       new BadRequestException('Código de indicação inválido ou não encontrado'),
     );
   });
 });
+

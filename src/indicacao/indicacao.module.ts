@@ -16,4 +16,4 @@ import { CashbackConsumerRepository } from './repository/cashback-consumer.repos
     CashbackConsumerRepository,
   ],
 })
-export class IndicacaoModule {}
+export class IndicacaoModule { }

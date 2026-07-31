@@ -16,6 +16,7 @@ const mockConsumer: CashbackConsumer = {
   referred_by: 'consumer-nivel1-uuid',
   referred_by_level2: 'consumer-nivel2-uuid',
   username: 'nivel0user',
+  nickname: 'nivel0user',
   full_name: 'Nível 0',
   referral_status: 'active',
   cashback_balance: 0,

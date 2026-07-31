@@ -44,7 +44,9 @@ describe('IndicacaoController', () => {
   const mockDto = {
     id: 'new-uuid',
     username: 'newuser',
+    nickname: 'newuser',
     full_name: 'New User',
+    referral_id: 'referrer-uuid',
     referralCodeUsed: 'REF123',
   };
 

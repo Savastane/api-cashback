@@ -14,6 +14,7 @@ describe('ActivateConsumerUseCase', () => {
     referred_by: 'referrer-uuid',
     referred_by_level2: null,
     username: 'consumerUser',
+    nickname: 'consumerUser',
     full_name: 'Consumer Name',
     referral_status: 'pending',
     cashback_balance: 0.0,

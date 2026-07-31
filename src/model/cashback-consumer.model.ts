@@ -6,6 +6,7 @@ export interface CashbackConsumer {
   referred_by: string | null;
   referred_by_level2: string | null;
   username: string;
+  nickname: string | null;
   full_name: string | null;
   referral_status: ReferralStatus;
   cashback_balance: number;
