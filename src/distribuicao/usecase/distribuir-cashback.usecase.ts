@@ -15,6 +15,8 @@ export interface DistribuirCashbackResponse {
   payable_id: string;
   order_value: number;
   transactions: CashbackTransaction[];
+  /** `true` quando o payable já havia sido distribuído e nada foi criado nesta chamada */
+  already_distributed: boolean;
 }
 
 // Interface mínima que qualquer repositório de consumer precisa prover
@@ -46,13 +48,24 @@ export class DistribuirCashbackUseCase {
       throw new BadRequestException('Payable sem order_value definido');
     }
 
-    // 2. Buscar o consumer nível 0 (dono da compra)
+    // 2. Idempotência — se o payable já foi distribuído, devolver as transações existentes
+    const distributed = await this.transactionRepository.findDistributedByPayableId(payable.id!);
+    if (distributed.length > 0) {
+      return {
+        payable_id: payable.id!,
+        order_value: payable.order_value,
+        transactions: distributed,
+        already_distributed: true,
+      };
+    }
+
+    // 3. Buscar o consumer nível 0 (dono da compra)
     const consumer = await this.consumerRepo.findById(payable.consumer_id);
     if (!consumer) {
       throw new BadRequestException('Consumer do payable não encontrado na rede de cashback');
     }
 
-    // 3. Buscar a taxa ativa
+    // 4. Buscar a taxa ativa
     const rates = await this.ratesRepository.findActive();
     if (!rates) {
       throw new BadRequestException('Nenhuma taxa de cashback ativa encontrada');
@@ -64,7 +77,7 @@ export class DistribuirCashbackUseCase {
     const now = new Date();
     const transactions: CashbackTransaction[] = [];
 
-    // 4. Transação nível 0 — o consumer que realizou a compra
+    // 5. Transação nível 0 — o consumer que realizou a compra
     const amount0 = this.calcPercent(orderValue, rates.percentage_0);
     if (amount0 > 0) {
       const tx0 = await this.transactionRepository.create({
@@ -81,7 +94,7 @@ export class DistribuirCashbackUseCase {
       transactions.push(tx0);
     }
 
-    // 5. Transação nível 1 — quem indicou o consumer (referred_by)
+    // 6. Transação nível 1 — quem indicou o consumer (referred_by)
     if (consumer.referred_by) {
       const amount1 = this.calcPercent(orderValue, rates.percentage_1);
       if (amount1 > 0) {
@@ -99,7 +112,7 @@ export class DistribuirCashbackUseCase {
         transactions.push(tx1);
       }
 
-      // 6. Transação nível 2 — quem indicou o indicador (referred_by_level2)
+      // 7. Transação nível 2 — quem indicou o indicador (referred_by_level2)
       if (consumer.referred_by_level2) {
         const amount2 = this.calcPercent(orderValue, rates.percentage_2);
         if (amount2 > 0) {
@@ -123,6 +136,7 @@ export class DistribuirCashbackUseCase {
       payable_id: payableId,
       order_value: orderValue,
       transactions,
+      already_distributed: false,
     };
   }
 

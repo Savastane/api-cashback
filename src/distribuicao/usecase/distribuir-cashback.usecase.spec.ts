@@ -63,7 +63,7 @@ describe('DistribuirCashbackUseCase', () => {
   let useCase: DistribuirCashbackUseCase;
   let payableRepo: jest.Mocked<Pick<PayableRepository, 'findById'>>;
   let ratesRepo: jest.Mocked<Pick<CashbackRatesRepository, 'findActive'>>;
-  let txRepo: jest.Mocked<Pick<CashbackTransactionRepository, 'create'>>;
+  let txRepo: jest.Mocked<Pick<CashbackTransactionRepository, 'create' | 'findDistributedByPayableId'>>;
 
   const mockConsumerRepo = {
     findById: jest.fn(),
@@ -72,7 +72,7 @@ describe('DistribuirCashbackUseCase', () => {
   beforeEach(async () => {
     payableRepo = { findById: jest.fn() };
     ratesRepo = { findActive: jest.fn() };
-    txRepo = { create: jest.fn() };
+    txRepo = { create: jest.fn(), findDistributedByPayableId: jest.fn().mockResolvedValue([]) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -143,6 +143,7 @@ describe('DistribuirCashbackUseCase', () => {
 
     const result = await useCase.execute({ payable_id: 'payable-uuid' });
 
+    expect(result.already_distributed).toBe(false);
     expect(result.transactions).toHaveLength(3);
     expect(result.transactions[0].consumer_id).toBe('consumer-nivel0-uuid');
     expect(result.transactions[0].amount).toBe(5.0);
@@ -167,5 +168,48 @@ describe('DistribuirCashbackUseCase', () => {
     const result = await useCase.execute({ payable_id: 'payable-uuid' });
 
     expect(result.transactions).toHaveLength(1);
+  });
+
+  // ─── Idempotência ───────────────────────────────────────────────────────────
+
+  it('should not create new transactions when the payable was already distributed', async () => {
+    const existing = [
+      makeTx({ id: 'tx-0', consumer_id: 'consumer-nivel0-uuid', amount: 5.0 }),
+      makeTx({ id: 'tx-1', consumer_id: 'consumer-nivel1-uuid', amount: 2.0, type: 'referral_cashback' }),
+    ];
+
+    payableRepo.findById.mockResolvedValue(mockPayable);
+    txRepo.findDistributedByPayableId.mockResolvedValue(existing);
+
+    const result = await useCase.execute({ payable_id: 'payable-uuid' });
+
+    expect(txRepo.create).not.toHaveBeenCalled();
+    expect(result.already_distributed).toBe(true);
+    expect(result.transactions).toEqual(existing);
+    expect(result.payable_id).toBe('payable-uuid');
+    expect(result.order_value).toBe(100.0);
+  });
+
+  it('should not fetch consumer or rates when the payable was already distributed', async () => {
+    payableRepo.findById.mockResolvedValue(mockPayable);
+    txRepo.findDistributedByPayableId.mockResolvedValue([
+      makeTx({ id: 'tx-0', consumer_id: 'consumer-nivel0-uuid', amount: 5.0 }),
+    ]);
+
+    await useCase.execute({ payable_id: 'payable-uuid' });
+
+    expect(mockConsumerRepo.findById).not.toHaveBeenCalled();
+    expect(ratesRepo.findActive).not.toHaveBeenCalled();
+  });
+
+  it('should check idempotency using the payable id', async () => {
+    payableRepo.findById.mockResolvedValue(mockPayable);
+    mockConsumerRepo.findById.mockResolvedValue(mockConsumer);
+    ratesRepo.findActive.mockResolvedValue(mockRates);
+    txRepo.create.mockResolvedValue(makeTx({}));
+
+    await useCase.execute({ payable_id: 'payable-uuid' });
+
+    expect(txRepo.findDistributedByPayableId).toHaveBeenCalledWith('payable-uuid');
   });
 });

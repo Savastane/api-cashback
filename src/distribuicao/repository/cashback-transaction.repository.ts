@@ -5,9 +5,33 @@ import { CashbackTransaction } from '../../model/cashback-transaction.model';
 
 export type CreateTransactionInput = Omit<CashbackTransaction, 'id' | 'created_at'>;
 
+/** Tipos gerados pela distribuição de cashback de um payable */
+const DISTRIBUTION_TYPES = ['purchase_cashback', 'referral_cashback'];
+
 @Injectable()
 export class CashbackTransactionRepository {
   constructor(@Inject(SUPABASE_CLIENT) private readonly supabase: SupabaseClient) {}
+
+  /** Retorna as transações de distribuição já geradas para o payable (garantia de idempotência) */
+  async findDistributedByPayableId(payableId: string): Promise<CashbackTransaction[]> {
+    const { data, error } = await this.supabase
+      .schema('cashback')
+      .from('transaction')
+      .select()
+      .eq('payable_id', payableId)
+      .in('type', DISTRIBUTION_TYPES)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      throw new Error(`Erro ao buscar transações do payable: ${error.message}`);
+    }
+
+    return (data ?? []).map((row) => ({
+      ...row,
+      occurred_at: new Date(row.occurred_at),
+      created_at: new Date(row.created_at),
+    })) as CashbackTransaction[];
+  }
 
   async create(input: CreateTransactionInput): Promise<CashbackTransaction> {
     const { data, error } = await this.supabase

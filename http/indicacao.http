@@ -7,6 +7,19 @@ POST {{baseUrl}}/indicacao
 Content-Type: application/json
 
 {
+  "id": "4df5b96b-b692-4552-a919-fdaad400567c",
+  "username": "Redecity Inova Simples",
+  "nickname": "@redecity",
+  "full_name": "Redecity Inova Simples",
+  "referral_id": "67be4156-dee8-4c36-a205-61756c77c926"
+}
+
+
+###
+POST {{baseUrl}}/indicacao
+Content-Type: application/json
+
+{
   "id": "{{consumerId}}",
   "username": "RedeCity", 
   "nickname": "@redecity", 

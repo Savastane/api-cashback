@@ -25,6 +25,7 @@ describe('DistribuicaoController', () => {
     payable_id: 'payable-uuid',
     order_value: 100.0,
     transactions: [mockTx],
+    already_distributed: false,
   };
 
   beforeEach(async () => {
