@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { AxiosResponse } from 'axios';
@@ -6,9 +7,14 @@ import { PayloadModel } from '../model/payload.model';
 
 @Injectable()
 export class ProduceService {
-  private readonly url = 'https://produce.redecity.com.br/publish';
+  private readonly url: string;
 
-  constructor(private readonly httpService: HttpService) {}
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
+  ) {
+    this.url = this.configService.get<string>('PRODUCE_API_URL') || 'https://produce.redecity.com.br/publish';
+  }
 
   async publish(message: PayloadModel): Promise<AxiosResponse> {
     return firstValueFrom(this.httpService.post(this.url, message));

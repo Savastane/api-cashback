@@ -1,7 +1,11 @@
-import { Injectable, BadRequestException, Inject } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { Injectable, BadRequestException, Inject, Logger } from '@nestjs/common';
 import { PayableRepository } from '../repository/payable.repository';
 import { CashbackRatesRepository } from '../repository/cashback-rates.repository';
 import { CashbackTransactionRepository } from '../repository/cashback-transaction.repository';
+import { UserProfileRepository } from '../repository/user-profile.repository';
+import { PartnerRepository } from '../repository/partner.repository';
+import { ProduceService } from '../../service/produce.service';
 import { CashbackTransaction } from '../../model/cashback-transaction.model';
 import { CashbackConsumer } from '../../model/cashback-consumer.model';
 
@@ -24,14 +28,27 @@ interface ConsumerRepo {
   findById(id: string): Promise<CashbackConsumer | null>;
 }
 
+// ─── Constantes das filas ─────────────────────────────────────────────────────
+
+const EXCHANGE = 'whatsapp';
+const QUEUE_COMPRA = 'whatsapp_cashback_compra';
+const QUEUE_REDE = 'whatsapp_cashback_rede';
+const ROUTING_KEY_COMPRA = 'cashback-compra';
+const ROUTING_KEY_REDE = 'cashback-rede';
+
 // ─── Use Case ─────────────────────────────────────────────────────────────────
 
 @Injectable()
 export class DistribuirCashbackUseCase {
+  private readonly logger = new Logger(DistribuirCashbackUseCase.name);
+
   constructor(
     private readonly payableRepository: PayableRepository,
     private readonly ratesRepository: CashbackRatesRepository,
     private readonly transactionRepository: CashbackTransactionRepository,
+    private readonly userProfileRepository: UserProfileRepository,
+    private readonly partnerRepository: PartnerRepository,
+    private readonly produceService: ProduceService,
     @Inject('CASHBACK_CONSUMER_REPO') private readonly consumerRepo: ConsumerRepo,
   ) {}
 
@@ -77,7 +94,24 @@ export class DistribuirCashbackUseCase {
     const now = new Date();
     const transactions: CashbackTransaction[] = [];
 
-    // 5. Transação nível 0 — o consumer que realizou a compra
+    // ── Coletar IDs para batch lookup de phones ────────────────────────────
+    const consumerIdsForPhone = new Set<string>();
+    consumerIdsForPhone.add(consumer.id);
+    if (consumer.referred_by) consumerIdsForPhone.add(consumer.referred_by);
+    if (consumer.referred_by_level2) consumerIdsForPhone.add(consumer.referred_by_level2);
+
+    // Buscar phones e nome do parceiro em paralelo
+    const [phoneMap, partnerName] = await Promise.all([
+      this.userProfileRepository.findPhonesByIds([...consumerIdsForPhone]),
+      payable.partner_id
+        ? this.partnerRepository.findNameById(payable.partner_id)
+        : Promise.resolve(null),
+    ]);
+
+    const redeNome = partnerName ?? 'RedeCity';
+    const buyerName = payable.consumer_name ?? consumer.full_name ?? consumer.username;
+
+    // ── 5. Transação nível 0 — o consumer que realizou a compra ────────────
     const amount0 = this.calcPercent(orderValue, rates.percentage_0);
     if (amount0 > 0) {
       const tx0 = await this.transactionRepository.create({
@@ -94,9 +128,12 @@ export class DistribuirCashbackUseCase {
       transactions.push(tx0);
     }
 
-    // 6. Transação nível 1 — quem indicou o consumer (referred_by)
+    let amount1 = 0;
+    let amount2 = 0;
+
+    // ── 6. Transação nível 1 — quem indicou o consumer (referred_by) ───────
     if (consumer.referred_by) {
-      const amount1 = this.calcPercent(orderValue, rates.percentage_1);
+      amount1 = this.calcPercent(orderValue, rates.percentage_1);
       if (amount1 > 0) {
         const tx1 = await this.transactionRepository.create({
           consumer_id: consumer.referred_by,
@@ -112,9 +149,9 @@ export class DistribuirCashbackUseCase {
         transactions.push(tx1);
       }
 
-      // 7. Transação nível 2 — quem indicou o indicador (referred_by_level2)
+      // ── 7. Transação nível 2 — quem indicou o indicador ──────────────────
       if (consumer.referred_by_level2) {
-        const amount2 = this.calcPercent(orderValue, rates.percentage_2);
+        amount2 = this.calcPercent(orderValue, rates.percentage_2);
         if (amount2 > 0) {
           const tx2 = await this.transactionRepository.create({
             consumer_id: consumer.referred_by_level2,
@@ -132,6 +169,57 @@ export class DistribuirCashbackUseCase {
       }
     }
 
+    // ── 8. Publicar mensagens nas filas (fire-and-forget) ──────────────────
+    const totalRede = amount1 + amount2;
+
+    // Fila de compra própria (nível 0)
+    if (amount0 > 0) {
+      await this.publishCashbackMessage({
+        consumerId: consumer.id,
+        consumerName: buyerName,
+        cashbackValor: amount0,
+        origemName: buyerName,
+        redeNome,
+        cashbackValor1: totalRede,
+        phoneMap,
+        routingKey: ROUTING_KEY_COMPRA,
+        queueName: QUEUE_COMPRA,
+      });
+    }
+
+    // Filas da rede (níveis 1 e 2)
+    if (amount1 > 0 && consumer.referred_by) {
+      const ref1Consumer = await this.consumerRepo.findById(consumer.referred_by);
+      const ref1Name = ref1Consumer?.full_name ?? ref1Consumer?.username ?? consumer.referred_by;
+      await this.publishCashbackMessage({
+        consumerId: consumer.referred_by,
+        consumerName: ref1Name,
+        cashbackValor: amount1,
+        origemName: buyerName,
+        redeNome,
+        cashbackValor1: amount0,
+        phoneMap,
+        routingKey: ROUTING_KEY_REDE,
+        queueName: QUEUE_REDE,
+      });
+    }
+
+    if (amount2 > 0 && consumer.referred_by_level2) {
+      const ref2Consumer = await this.consumerRepo.findById(consumer.referred_by_level2);
+      const ref2Name = ref2Consumer?.full_name ?? ref2Consumer?.username ?? consumer.referred_by_level2;
+      await this.publishCashbackMessage({
+        consumerId: consumer.referred_by_level2,
+        consumerName: ref2Name,
+        cashbackValor: amount2,
+        origemName: buyerName,
+        redeNome,
+        cashbackValor1: amount0,
+        phoneMap,
+        routingKey: ROUTING_KEY_REDE,
+        queueName: QUEUE_REDE,
+      });
+    }
+
     return {
       payable_id: payableId,
       order_value: orderValue,
@@ -140,8 +228,62 @@ export class DistribuirCashbackUseCase {
     };
   }
 
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
   /** Calcula o percentual arredondado em 2 casas decimais */
   private calcPercent(value: number, percentage: number): number {
     return Math.round((value * percentage) / 100 * 100) / 100;
+  }
+
+  /** Formata valor numérico como string de moeda (ex: "5.00") */
+  private formatCurrency(value: number): string {
+    return value.toFixed(2);
+  }
+
+  /** Publica uma mensagem de cashback na fila (não lança exceção em caso de falha) */
+  private async publishCashbackMessage(params: {
+    consumerId: string;
+    consumerName: string;
+    cashbackValor: number;
+    origemName: string;
+    redeNome: string;
+    cashbackValor1: number;
+    phoneMap: Map<string, string>;
+    routingKey: string;
+    queueName: string;
+  }): Promise<void> {
+    const phone = params.phoneMap.get(params.consumerId);
+    if (!phone) {
+      this.logger.warn(
+        `Phone não encontrado para consumer ${params.consumerId} — mensagem para fila "${params.routingKey}" não será enviada`,
+      );
+      return;
+    }
+
+    try {
+      await this.produceService.publish({
+        id: randomUUID(),
+        exchange: EXCHANGE,
+        queue: params.queueName,
+        routingKey: params.routingKey,
+        data: {
+          phone,
+          consumerName: params.consumerName,
+          cashbackValor: this.formatCurrency(params.cashbackValor),
+          origemName: params.origemName,
+          redeNome: params.redeNome,
+          cashbackValor1: this.formatCurrency(params.cashbackValor1),
+        },
+        timestamp: new Date().toISOString(),
+      });
+
+      this.logger.log(
+        `Mensagem publicada: routingKey=${params.routingKey} consumer=${params.consumerId} valor=${params.cashbackValor}`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Falha ao publicar mensagem na fila "${params.routingKey}" para consumer ${params.consumerId}: ${err}`,
+      );
+    }
   }
 }

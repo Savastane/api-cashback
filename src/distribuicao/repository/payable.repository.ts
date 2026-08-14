@@ -10,7 +10,7 @@ export class PayableRepository {
   async findById(id: string): Promise<PayableModel | null> {
     const { data, error } = await this.supabase
       .from('payable')
-      .select('id, consumer_id, order_value, order_id, partner_id, status')
+      .select('id, consumer_id, order_value, order_id, partner_id, status, consumer_name')
       .eq('id', id)
       .maybeSingle();
 

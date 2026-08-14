@@ -3,6 +3,9 @@ import { DistribuirCashbackUseCase } from './distribuir-cashback.usecase';
 import { PayableRepository } from '../repository/payable.repository';
 import { CashbackRatesRepository } from '../repository/cashback-rates.repository';
 import { CashbackTransactionRepository } from '../repository/cashback-transaction.repository';
+import { UserProfileRepository } from '../repository/user-profile.repository';
+import { PartnerRepository } from '../repository/partner.repository';
+import { ProduceService } from '../../service/produce.service';
 import { CashbackConsumer } from '../../model/cashback-consumer.model';
 import { CashbackRates } from '../../model/cashback-rates.model';
 import { CashbackTransaction } from '../../model/cashback-transaction.model';
@@ -24,6 +27,34 @@ const mockConsumer: CashbackConsumer = {
   updated_at: new Date(),
 };
 
+const mockConsumerNivel1: CashbackConsumer = {
+  id: 'consumer-nivel1-uuid',
+  referral_code: 'REF001',
+  referred_by: 'consumer-nivel2-uuid',
+  referred_by_level2: null,
+  username: 'nivel1user',
+  nickname: 'nivel1user',
+  full_name: 'Nível 1',
+  referral_status: 'active',
+  cashback_balance: 0,
+  created_at: new Date(),
+  updated_at: new Date(),
+};
+
+const mockConsumerNivel2: CashbackConsumer = {
+  id: 'consumer-nivel2-uuid',
+  referral_code: 'REF002',
+  referred_by: null,
+  referred_by_level2: null,
+  username: 'nivel2user',
+  nickname: 'nivel2user',
+  full_name: 'Nível 2',
+  referral_status: 'active',
+  cashback_balance: 0,
+  created_at: new Date(),
+  updated_at: new Date(),
+};
+
 const mockPayable = {
   id: 'payable-uuid',
   partner_id: 'partner-uuid',
@@ -31,6 +62,7 @@ const mockPayable = {
   order_value: 100.0,
   order_id: 'order-uuid',
   status: 'paid',
+  consumer_name: 'Nível 0',
 };
 
 const mockRates: CashbackRates = {
@@ -57,6 +89,12 @@ const makeTx = (override: Partial<CashbackTransaction>): CashbackTransaction => 
   ...override,
 });
 
+const mockPhoneMap = new Map<string, string>([
+  ['consumer-nivel0-uuid', '5511999990000'],
+  ['consumer-nivel1-uuid', '5511999990001'],
+  ['consumer-nivel2-uuid', '5511999990002'],
+]);
+
 // ─── Testes ───────────────────────────────────────────────────────────────────
 
 describe('DistribuirCashbackUseCase', () => {
@@ -64,15 +102,34 @@ describe('DistribuirCashbackUseCase', () => {
   let payableRepo: jest.Mocked<Pick<PayableRepository, 'findById'>>;
   let ratesRepo: jest.Mocked<Pick<CashbackRatesRepository, 'findActive'>>;
   let txRepo: jest.Mocked<Pick<CashbackTransactionRepository, 'create' | 'findDistributedByPayableId'>>;
+  let produceService: jest.Mocked<Pick<ProduceService, 'publish'>>;
 
   const mockConsumerRepo = {
     findById: jest.fn(),
   };
+  const mockUserProfileRepo = {
+    findPhonesByIds: jest.fn().mockResolvedValue(mockPhoneMap),
+  };
+  const mockPartnerRepo = {
+    findNameById: jest.fn().mockResolvedValue('Loja Teste'),
+  };
+
+  /** Configura o mockConsumerRepo.findById para retornar o consumer correto por ID */
+  function setupConsumerRepoForThreeLevels() {
+    mockConsumerRepo.findById.mockImplementation(async (id: string) => {
+      if (id === 'consumer-nivel0-uuid') return mockConsumer;
+      if (id === 'consumer-nivel1-uuid') return mockConsumerNivel1;
+      if (id === 'consumer-nivel2-uuid') return mockConsumerNivel2;
+      return null;
+    });
+  }
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     payableRepo = { findById: jest.fn() };
     ratesRepo = { findActive: jest.fn() };
     txRepo = { create: jest.fn(), findDistributedByPayableId: jest.fn().mockResolvedValue([]) };
+    produceService = { publish: jest.fn().mockResolvedValue({} as any) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -80,6 +137,9 @@ describe('DistribuirCashbackUseCase', () => {
         { provide: PayableRepository, useValue: payableRepo },
         { provide: CashbackRatesRepository, useValue: ratesRepo },
         { provide: CashbackTransactionRepository, useValue: txRepo },
+        { provide: UserProfileRepository, useValue: mockUserProfileRepo },
+        { provide: PartnerRepository, useValue: mockPartnerRepo },
+        { provide: ProduceService, useValue: produceService },
         {
           provide: 'CASHBACK_CONSUMER_REPO',
           useValue: mockConsumerRepo,
@@ -130,7 +190,7 @@ describe('DistribuirCashbackUseCase', () => {
 
   it('should generate 3 transactions for nivel 0, 1 and 2', async () => {
     payableRepo.findById.mockResolvedValue(mockPayable);
-    mockConsumerRepo.findById.mockResolvedValue(mockConsumer);
+    setupConsumerRepoForThreeLevels();
     ratesRepo.findActive.mockResolvedValue(mockRates);
 
     // order_value = 100, percentage_0 = 5% => 5.00
@@ -158,6 +218,68 @@ describe('DistribuirCashbackUseCase', () => {
     expect(result.transactions[2].type).toBe('referral_cashback');
   });
 
+  it('should publish messages to compra and rede queues after distribution', async () => {
+    payableRepo.findById.mockResolvedValue(mockPayable);
+    setupConsumerRepoForThreeLevels();
+    ratesRepo.findActive.mockResolvedValue(mockRates);
+
+    txRepo.create
+      .mockResolvedValueOnce(makeTx({ consumer_id: 'consumer-nivel0-uuid', amount: 5.0 }))
+      .mockResolvedValueOnce(makeTx({ consumer_id: 'consumer-nivel1-uuid', amount: 2.0, type: 'referral_cashback', description: 'CashBack Compras Indicado' }))
+      .mockResolvedValueOnce(makeTx({ consumer_id: 'consumer-nivel2-uuid', amount: 1.0, type: 'referral_cashback', description: 'CashBack Compras Indicado' }));
+
+    await useCase.execute({ payable_id: 'payable-uuid' });
+
+    expect(produceService.publish).toHaveBeenCalledTimes(3);
+
+    // Compra (nível 0)
+    expect(produceService.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        exchange: 'whatsapp',
+        queue: 'whatsapp_cashback_compra',
+        routingKey: 'cashback-compra',
+        data: expect.objectContaining({
+          phone: '5511999990000',
+          consumerName: 'Nível 0',
+          cashbackValor: '5.00',
+          origemName: 'Nível 0',
+          redeNome: 'Loja Teste',
+          cashbackValor1: '3.00',
+        }),
+      }),
+    );
+
+    // Rede nível 1
+    expect(produceService.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        exchange: 'whatsapp',
+        queue: 'whatsapp_cashback_rede',
+        routingKey: 'cashback-rede',
+        data: expect.objectContaining({
+          phone: '5511999990001',
+          consumerName: 'Nível 1',
+          cashbackValor: '2.00',
+          origemName: 'Nível 0',
+        }),
+      }),
+    );
+
+    // Rede nível 2
+    expect(produceService.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        exchange: 'whatsapp',
+        queue: 'whatsapp_cashback_rede',
+        routingKey: 'cashback-rede',
+        data: expect.objectContaining({
+          phone: '5511999990002',
+          consumerName: 'Nível 2',
+          cashbackValor: '1.00',
+          origemName: 'Nível 0',
+        }),
+      }),
+    );
+  });
+
   it('should skip nivel 1 transaction if consumer has no referred_by', async () => {
     payableRepo.findById.mockResolvedValue(mockPayable);
     mockConsumerRepo.findById.mockResolvedValue({ ...mockConsumer, referred_by: null, referred_by_level2: null });
@@ -168,6 +290,28 @@ describe('DistribuirCashbackUseCase', () => {
     const result = await useCase.execute({ payable_id: 'payable-uuid' });
 
     expect(result.transactions).toHaveLength(1);
+    expect(produceService.publish).toHaveBeenCalledTimes(1); // apenas compra
+  });
+
+  it('should not publish if phone is missing for a consumer', async () => {
+    // Remove phone do nível 1
+    const partialPhoneMap = new Map(mockPhoneMap);
+    partialPhoneMap.delete('consumer-nivel1-uuid');
+    mockUserProfileRepo.findPhonesByIds.mockResolvedValue(partialPhoneMap);
+
+    payableRepo.findById.mockResolvedValue(mockPayable);
+    setupConsumerRepoForThreeLevels();
+    ratesRepo.findActive.mockResolvedValue(mockRates);
+
+    txRepo.create
+      .mockResolvedValueOnce(makeTx({ consumer_id: 'consumer-nivel0-uuid', amount: 5.0 }))
+      .mockResolvedValueOnce(makeTx({ consumer_id: 'consumer-nivel1-uuid', amount: 2.0, type: 'referral_cashback', description: 'CashBack Compras Indicado' }))
+      .mockResolvedValueOnce(makeTx({ consumer_id: 'consumer-nivel2-uuid', amount: 1.0, type: 'referral_cashback', description: 'CashBack Compras Indicado' }));
+
+    await useCase.execute({ payable_id: 'payable-uuid' });
+
+    // Deve publicar nível 0 e nível 2, pular nível 1 (sem phone)
+    expect(produceService.publish).toHaveBeenCalledTimes(2);
   });
 
   // ─── Idempotência ───────────────────────────────────────────────────────────
@@ -184,6 +328,7 @@ describe('DistribuirCashbackUseCase', () => {
     const result = await useCase.execute({ payable_id: 'payable-uuid' });
 
     expect(txRepo.create).not.toHaveBeenCalled();
+    expect(produceService.publish).not.toHaveBeenCalled();
     expect(result.already_distributed).toBe(true);
     expect(result.transactions).toEqual(existing);
     expect(result.payable_id).toBe('payable-uuid');
@@ -200,6 +345,7 @@ describe('DistribuirCashbackUseCase', () => {
 
     expect(mockConsumerRepo.findById).not.toHaveBeenCalled();
     expect(ratesRepo.findActive).not.toHaveBeenCalled();
+    expect(produceService.publish).not.toHaveBeenCalled();
   });
 
   it('should check idempotency using the payable id', async () => {
