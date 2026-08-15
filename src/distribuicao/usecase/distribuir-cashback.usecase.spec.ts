@@ -242,7 +242,7 @@ describe('DistribuirCashbackUseCase', () => {
           phone: '5511999990000',
           consumerName: 'Nível 0',
           cashbackValor: '5.00',
-          origemName: 'Nível 0',
+          origemName: 'Loja Teste',
           redeNome: 'Loja Teste',
           cashbackValor1: '3.00',
         }),
@@ -259,7 +259,8 @@ describe('DistribuirCashbackUseCase', () => {
           phone: '5511999990001',
           consumerName: 'Nível 1',
           cashbackValor: '2.00',
-          origemName: 'Nível 0',
+          origemName: 'Loja Teste',
+          redeNome: 'Nível 0',
         }),
       }),
     );
@@ -274,7 +275,8 @@ describe('DistribuirCashbackUseCase', () => {
           phone: '5511999990002',
           consumerName: 'Nível 2',
           cashbackValor: '1.00',
-          origemName: 'Nível 0',
+          origemName: 'Loja Teste',
+          redeNome: 'Nível 0',
         }),
       }),
     );

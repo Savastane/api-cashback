@@ -108,78 +108,98 @@ export class DistribuirCashbackUseCase {
         : Promise.resolve(null),
     ]);
 
-    const redeNome = partnerName ?? 'RedeCity';
+    const storeName = partnerName ?? 'RedeCity';
     const buyerName = payable.consumer_name ?? consumer.full_name ?? consumer.username;
 
-    // ── 5. Transação nível 0 — o consumer que realizou a compra ────────────
-    const amount0 = this.calcPercent(orderValue, rates.percentage_0);
-    if (amount0 > 0) {
-      const tx0 = await this.transactionRepository.create({
-        consumer_id: consumer.id,
-        type: 'purchase_cashback',
-        direction: 'in',
-        amount: amount0,
-        payable_id: payableId,
-        order_id: orderId,
-        description: 'CashBack Compras',
-        occurred_at: now,
-        transaction_id: null,
-      });
-      transactions.push(tx0);
-    }
-
+    // ── 5. Transações de Cashback com Idempotência ────────────────────────
+    let amount0 = 0;
     let amount1 = 0;
     let amount2 = 0;
 
-    // ── 6. Transação nível 1 — quem indicou o consumer (referred_by) ───────
-    if (consumer.referred_by) {
-      amount1 = this.calcPercent(orderValue, rates.percentage_1);
-      if (amount1 > 0) {
-        const tx1 = await this.transactionRepository.create({
-          consumer_id: consumer.referred_by,
-          type: 'referral_cashback',
+    try {
+      // Transação nível 0 — o consumer que realizou a compra
+      amount0 = this.calcPercent(orderValue, rates.percentage_0);
+      if (amount0 > 0) {
+        const tx0 = await this.transactionRepository.create({
+          consumer_id: consumer.id,
+          type: 'purchase_cashback',
           direction: 'in',
-          amount: amount1,
+          amount: amount0,
           payable_id: payableId,
           order_id: orderId,
-          description: 'CashBack Compras Indicado',
+          description: 'CashBack Compras',
           occurred_at: now,
           transaction_id: null,
         });
-        transactions.push(tx1);
+        transactions.push(tx0);
       }
 
-      // ── 7. Transação nível 2 — quem indicou o indicador ──────────────────
-      if (consumer.referred_by_level2) {
-        amount2 = this.calcPercent(orderValue, rates.percentage_2);
-        if (amount2 > 0) {
-          const tx2 = await this.transactionRepository.create({
-            consumer_id: consumer.referred_by_level2,
+      // Transação nível 1 — quem indicou o consumer (referred_by)
+      if (consumer.referred_by) {
+        amount1 = this.calcPercent(orderValue, rates.percentage_1);
+        if (amount1 > 0) {
+          const tx1 = await this.transactionRepository.create({
+            consumer_id: consumer.referred_by,
             type: 'referral_cashback',
             direction: 'in',
-            amount: amount2,
+            amount: amount1,
             payable_id: payableId,
             order_id: orderId,
             description: 'CashBack Compras Indicado',
             occurred_at: now,
             transaction_id: null,
           });
-          transactions.push(tx2);
+          transactions.push(tx1);
+        }
+
+        // Transação nível 2 — quem indicou o indicador
+        if (consumer.referred_by_level2) {
+          amount2 = this.calcPercent(orderValue, rates.percentage_2);
+          if (amount2 > 0) {
+            const tx2 = await this.transactionRepository.create({
+              consumer_id: consumer.referred_by_level2,
+              type: 'referral_cashback',
+              direction: 'in',
+              amount: amount2,
+              payable_id: payableId,
+              order_id: orderId,
+              description: 'CashBack Compras Indicado',
+              occurred_at: now,
+              transaction_id: null,
+            });
+            transactions.push(tx2);
+          }
         }
       }
+    } catch (err: any) {
+      // Se houver concorrência (ex: 2 workers processando o mesmo payable simultaneamente),
+      // a constraint unique do banco barra e nós recuperamos as transações já criadas
+      const alreadyCreated = await this.transactionRepository.findDistributedByPayableId(payableId);
+      if (alreadyCreated.length > 0) {
+        this.logger.warn(
+          `Concorrência detectada: payable ${payableId} já foi distribuído por outro worker.`,
+        );
+        return {
+          payable_id: payableId,
+          order_value: orderValue,
+          transactions: alreadyCreated,
+          already_distributed: true,
+        };
+      }
+      throw err;
     }
 
     // ── 8. Publicar mensagens nas filas (fire-and-forget) ──────────────────
     const totalRede = amount1 + amount2;
 
-    // Fila de compra própria (nível 0)
+    // Fila de compra própria (nível 0) -> whatsapp_cashback_compra
     if (amount0 > 0) {
       await this.publishCashbackMessage({
         consumerId: consumer.id,
         consumerName: buyerName,
         cashbackValor: amount0,
-        origemName: buyerName,
-        redeNome,
+        origemName: storeName,
+        redeNome: storeName,
         cashbackValor1: totalRede,
         phoneMap,
         routingKey: ROUTING_KEY_COMPRA,
@@ -187,7 +207,7 @@ export class DistribuirCashbackUseCase {
       });
     }
 
-    // Filas da rede (níveis 1 e 2)
+    // Filas da rede (níveis 1 e 2) -> whatsapp_cashback_rede
     if (amount1 > 0 && consumer.referred_by) {
       const ref1Consumer = await this.consumerRepo.findById(consumer.referred_by);
       const ref1Name = ref1Consumer?.full_name ?? ref1Consumer?.username ?? consumer.referred_by;
@@ -195,8 +215,8 @@ export class DistribuirCashbackUseCase {
         consumerId: consumer.referred_by,
         consumerName: ref1Name,
         cashbackValor: amount1,
-        origemName: buyerName,
-        redeNome,
+        origemName: storeName,
+        redeNome: buyerName,
         cashbackValor1: amount0,
         phoneMap,
         routingKey: ROUTING_KEY_REDE,
@@ -211,8 +231,8 @@ export class DistribuirCashbackUseCase {
         consumerId: consumer.referred_by_level2,
         consumerName: ref2Name,
         cashbackValor: amount2,
-        origemName: buyerName,
-        redeNome,
+        origemName: storeName,
+        redeNome: buyerName,
         cashbackValor1: amount0,
         phoneMap,
         routingKey: ROUTING_KEY_REDE,

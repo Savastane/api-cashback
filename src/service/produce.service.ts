@@ -13,7 +13,9 @@ export class ProduceService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
-    this.url = this.configService.get<string>('PRODUCE_API_URL') || 'https://produce.redecity.com.br/publish';
+    const rawUrl = this.configService.get<string>('PRODUCE_API_URL') || 'https://produce.redecity.com.br';
+    const baseUrl = rawUrl.replace(/\/publish\/?$/, '').replace(/\/+$/, '');
+    this.url = `${baseUrl}/publish`;
   }
 
   async publish(message: PayloadModel): Promise<AxiosResponse> {
