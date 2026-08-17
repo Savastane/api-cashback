@@ -5,4 +5,5 @@ export interface PayloadModel {
   data: any;
   timestamp: string;
   routingKey: string;
+  exchangeType?: string;
 }

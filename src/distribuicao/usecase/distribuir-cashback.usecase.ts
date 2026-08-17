@@ -297,6 +297,7 @@ export class DistribuirCashbackUseCase {
         exchange: EXCHANGE,
         queue: params.queueName,
         routingKey: params.routingKey,
+        exchangeType: 'direct',
         data: {
           phone,
           consumerName: params.consumerName,
