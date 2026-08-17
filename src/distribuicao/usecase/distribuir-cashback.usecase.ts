@@ -277,6 +277,11 @@ export class DistribuirCashbackUseCase {
     queueName: string;
   }): Promise<void> {
     console.log('publishCashbackMessage', params);
+
+    this.logger.warn(
+        `Objeto Send ZAP ${params} — mensagem para fila "${params.routingKey}" `,
+      );
+
     const phone = params.phoneMap.get(params.consumerId);
     if (!phone) {
       this.logger.warn(
