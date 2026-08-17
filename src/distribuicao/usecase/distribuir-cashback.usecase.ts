@@ -192,6 +192,10 @@ export class DistribuirCashbackUseCase {
     // ── 8. Publicar mensagens nas filas (fire-and-forget) ──────────────────
     const totalRede = amount1 + amount2;
 
+    console.log('amount0', amount0);
+    console.log('amount1', amount1);
+    console.log('amount2', amount2);
+
     // Fila de compra própria (nível 0) -> whatsapp_cashback_compra
     if (amount0 > 0) {
       await this.publishCashbackMessage({
@@ -272,6 +276,7 @@ export class DistribuirCashbackUseCase {
     routingKey: string;
     queueName: string;
   }): Promise<void> {
+    console.log('publishCashbackMessage', params);
     const phone = params.phoneMap.get(params.consumerId);
     if (!phone) {
       this.logger.warn(
