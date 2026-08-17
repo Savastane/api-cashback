@@ -19,6 +19,13 @@ export class ProduceService {
   }
 
   async publish(message: PayloadModel): Promise<AxiosResponse> {
-    return firstValueFrom(this.httpService.post(this.url, message));
+    return firstValueFrom(
+      this.httpService.post(this.url, message, {
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+      }),
+    );
   }
 }

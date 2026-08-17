@@ -1,9 +1,10 @@
 export interface PayloadModel {
-  id: string;
+  
   exchange: string;
   queue: string;
+  routingKey: string;
   data: any;
   timestamp: string;
-  routingKey: string;
+  id: string;  
   exchangeType?: string;
 }
