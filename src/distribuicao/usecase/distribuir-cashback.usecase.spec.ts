@@ -3,7 +3,7 @@ import { DistribuirCashbackUseCase } from './distribuir-cashback.usecase';
 import { PayableRepository } from '../repository/payable.repository';
 import { CashbackRatesRepository } from '../repository/cashback-rates.repository';
 import { CashbackTransactionRepository } from '../repository/cashback-transaction.repository';
-import { UserProfileRepository } from '../repository/user-profile.repository';
+import { ConsumerRepository } from '../repository/consumer.repository';
 import { PartnerRepository } from '../repository/partner.repository';
 import { ProduceService } from '../../service/produce.service';
 import { CashbackConsumer } from '../../model/cashback-consumer.model';
@@ -107,7 +107,7 @@ describe('DistribuirCashbackUseCase', () => {
   const mockConsumerRepo = {
     findById: jest.fn(),
   };
-  const mockUserProfileRepo = {
+  const mockPublicConsumerRepo = {
     findPhonesByIds: jest.fn().mockResolvedValue(mockPhoneMap),
   };
   const mockPartnerRepo = {
@@ -137,7 +137,7 @@ describe('DistribuirCashbackUseCase', () => {
         { provide: PayableRepository, useValue: payableRepo },
         { provide: CashbackRatesRepository, useValue: ratesRepo },
         { provide: CashbackTransactionRepository, useValue: txRepo },
-        { provide: UserProfileRepository, useValue: mockUserProfileRepo },
+        { provide: ConsumerRepository, useValue: mockPublicConsumerRepo },
         { provide: PartnerRepository, useValue: mockPartnerRepo },
         { provide: ProduceService, useValue: produceService },
         {
@@ -299,7 +299,7 @@ describe('DistribuirCashbackUseCase', () => {
     // Remove phone do nível 1
     const partialPhoneMap = new Map(mockPhoneMap);
     partialPhoneMap.delete('consumer-nivel1-uuid');
-    mockUserProfileRepo.findPhonesByIds.mockResolvedValue(partialPhoneMap);
+    mockPublicConsumerRepo.findPhonesByIds.mockResolvedValue(partialPhoneMap);
 
     payableRepo.findById.mockResolvedValue(mockPayable);
     setupConsumerRepoForThreeLevels();

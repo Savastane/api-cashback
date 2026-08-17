@@ -3,7 +3,7 @@ import { Injectable, BadRequestException, Inject, Logger } from '@nestjs/common'
 import { PayableRepository } from '../repository/payable.repository';
 import { CashbackRatesRepository } from '../repository/cashback-rates.repository';
 import { CashbackTransactionRepository } from '../repository/cashback-transaction.repository';
-import { UserProfileRepository } from '../repository/user-profile.repository';
+import { ConsumerRepository } from '../repository/consumer.repository';
 import { PartnerRepository } from '../repository/partner.repository';
 import { ProduceService } from '../../service/produce.service';
 import { CashbackTransaction } from '../../model/cashback-transaction.model';
@@ -46,7 +46,7 @@ export class DistribuirCashbackUseCase {
     private readonly payableRepository: PayableRepository,
     private readonly ratesRepository: CashbackRatesRepository,
     private readonly transactionRepository: CashbackTransactionRepository,
-    private readonly userProfileRepository: UserProfileRepository,
+    private readonly consumerRepository: ConsumerRepository,
     private readonly partnerRepository: PartnerRepository,
     private readonly produceService: ProduceService,
     @Inject('CASHBACK_CONSUMER_REPO') private readonly consumerRepo: ConsumerRepo,
@@ -100,9 +100,9 @@ export class DistribuirCashbackUseCase {
     if (consumer.referred_by) consumerIdsForPhone.add(consumer.referred_by);
     if (consumer.referred_by_level2) consumerIdsForPhone.add(consumer.referred_by_level2);
 
-    // Buscar phones e nome do parceiro em paralelo
+    // Buscar phones (whatsapp_number do schema public) e nome do parceiro em paralelo
     const [phoneMap, partnerName] = await Promise.all([
-      this.userProfileRepository.findPhonesByIds([...consumerIdsForPhone]),
+      this.consumerRepository.findPhonesByIds([...consumerIdsForPhone]),
       payable.partner_id
         ? this.partnerRepository.findNameById(payable.partner_id)
         : Promise.resolve(null),
@@ -191,13 +191,17 @@ export class DistribuirCashbackUseCase {
 
     // ── 8. Publicar mensagens nas filas (fire-and-forget) ──────────────────
     const totalRede = amount1 + amount2;
-
-    console.log('amount0', amount0);
-    console.log('amount1', amount1);
-    console.log('amount2', amount2);
-
+ 
+    
     // Fila de compra própria (nível 0) -> whatsapp_cashback_compra
     if (amount0 > 0) {
+      const phone0 = phoneMap.get(consumer.id) ?? null;
+      this.logger.log(
+        `[NÍVEL 0 - COMPRA] consumerId=${consumer.id} | consumerName="${buyerName}" | ` +
+        `cashbackValor=${amount0.toFixed(2)} | origemName="${storeName}" | ` +
+        `redeNome="${storeName}" | cashbackValor1=${totalRede.toFixed(2)} | ` +
+        `phone="${phone0}" | queue=${QUEUE_COMPRA} | routingKey=${ROUTING_KEY_COMPRA}`,
+      );
       await this.publishCashbackMessage({
         consumerId: consumer.id,
         consumerName: buyerName,
@@ -276,11 +280,8 @@ export class DistribuirCashbackUseCase {
     routingKey: string;
     queueName: string;
   }): Promise<void> {
-    console.log('publishCashbackMessage', params);
+    
 
-    this.logger.warn(
-        `Objeto Send ZAP ${params} — mensagem para fila "${params.routingKey}" `,
-      );
 
     const phone = params.phoneMap.get(params.consumerId);
     if (!phone) {

@@ -6,8 +6,8 @@ import { DistribuirCashbackUseCase } from './usecase/distribuir-cashback.usecase
 import { PayableRepository } from './repository/payable.repository';
 import { CashbackRatesRepository } from './repository/cashback-rates.repository';
 import { CashbackTransactionRepository } from './repository/cashback-transaction.repository';
-import { UserProfileRepository } from './repository/user-profile.repository';
 import { PartnerRepository } from './repository/partner.repository';
+import { ConsumerRepository } from './repository/consumer.repository';
 import { CashbackConsumerRepository } from '../indicacao/repository/cashback-consumer.repository';
 import { ProduceService } from '../service/produce.service';
 
@@ -19,8 +19,8 @@ import { ProduceService } from '../service/produce.service';
     PayableRepository,
     CashbackRatesRepository,
     CashbackTransactionRepository,
-    UserProfileRepository,
     PartnerRepository,
+    ConsumerRepository,
     ProduceService,
     {
       provide: 'CASHBACK_CONSUMER_REPO',
