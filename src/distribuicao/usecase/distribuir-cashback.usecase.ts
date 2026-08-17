@@ -193,7 +193,7 @@ export class DistribuirCashbackUseCase {
     const totalRede = amount1 + amount2;
  
     
-    // Fila de compra própria (nível 0) -> whatsapp_cashback_compra
+    // Fila de compra própria (nível 0) -> whatsapp_cashback_compra sava
     if (amount0 > 0) {
       const phone0 = phoneMap.get(consumer.id) ?? null;
       this.logger.log(
